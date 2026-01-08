@@ -15,7 +15,6 @@ const StudentList: React.FC<StudentListProps> = ({ students, onAdd, onUpdate, on
   const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fix: Explicitly type initialFormData to match the expected state and student properties
   const initialFormData: Omit<Student, 'id'> = {
     name: '',
     nik: '',
@@ -28,7 +27,6 @@ const StudentList: React.FC<StudentListProps> = ({ students, onAdd, onUpdate, on
     photo: ''
   };
 
-  // Fix: Use Omit<Student, 'id'> to handle optional properties correctly
   const [formData, setFormData] = useState<Omit<Student, 'id'>>(initialFormData);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,7 +50,6 @@ const StudentList: React.FC<StudentListProps> = ({ students, onAdd, onUpdate, on
     closeForm();
   };
 
-  // Fix: Destructure student object to remove id and ensure optional photo property is handled for the form state
   const openEdit = (student: Student) => {
     setEditingStudent(student);
     const { id, ...studentData } = student;
@@ -87,7 +84,10 @@ const StudentList: React.FC<StudentListProps> = ({ students, onAdd, onUpdate, on
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h2 className="text-xl font-bold text-slate-800">Manajemen Santri</h2>
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Manajemen Santri</h2>
+          <p className="text-sm text-slate-500 font-medium">Pengelolaan data induk dan informasi keluarga santri.</p>
+        </div>
         <div className="flex gap-2 w-full md:w-auto">
           <button 
             onClick={exportToCSV}
@@ -104,7 +104,6 @@ const StudentList: React.FC<StudentListProps> = ({ students, onAdd, onUpdate, on
         </div>
       </div>
 
-      {/* Form Modal - Z-INDEX INCREASED to 100 */}
       {isFormOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in duration-300">
@@ -132,13 +131,7 @@ const StudentList: React.FC<StudentListProps> = ({ students, onAdd, onUpdate, on
                     </>
                   )}
                 </div>
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  onChange={handleFileChange} 
-                  accept="image/*" 
-                  className="hidden" 
-                />
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -183,7 +176,6 @@ const StudentList: React.FC<StudentListProps> = ({ students, onAdd, onUpdate, on
         </div>
       )}
 
-      {/* Detail Modal - Z-INDEX INCREASED to 100 */}
       {viewingStudent && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
@@ -232,7 +224,7 @@ const StudentList: React.FC<StudentListProps> = ({ students, onAdd, onUpdate, on
         </div>
       )}
 
-      {/* Desktop View Table */}
+      {/* Desktop Table View */}
       <div className="hidden lg:block bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
         <table className="w-full text-left">
           <thead className="bg-slate-50/50 border-b border-slate-100">
@@ -292,11 +284,35 @@ const StudentList: React.FC<StudentListProps> = ({ students, onAdd, onUpdate, on
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setViewingStudent(s)} className="w-9 h-9 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center"><i className="fa-solid fa-eye text-xs"></i></button>
-              <button onClick={() => openEdit(s)} className="w-9 h-9 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center"><i className="fa-solid fa-edit text-xs"></i></button>
+              <button 
+                onClick={() => setViewingStudent(s)} 
+                className="w-9 h-9 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center active:scale-90 transition-transform"
+                title="Lihat Detail"
+              >
+                <i className="fa-solid fa-eye text-xs"></i>
+              </button>
+              <button 
+                onClick={() => openEdit(s)} 
+                className="w-9 h-9 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center active:scale-90 transition-transform"
+                title="Edit Data"
+              >
+                <i className="fa-solid fa-edit text-xs"></i>
+              </button>
+              <button 
+                onClick={() => onDelete(s.id)} 
+                className="w-9 h-9 rounded-xl bg-red-50 text-red-400 flex items-center justify-center active:scale-90 transition-transform"
+                title="Hapus Santri"
+              >
+                <i className="fa-solid fa-trash-can text-xs"></i>
+              </button>
             </div>
           </div>
         ))}
+        {students.length === 0 && (
+          <div className="col-span-full py-12 text-center bg-white rounded-3xl border border-slate-100 border-dashed">
+            <p className="text-slate-400 text-sm font-medium">Belum ada data santri.</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -306,7 +322,7 @@ const ActionButton = ({ onClick, icon, color, title }: { onClick: () => void, ic
   <button 
     onClick={onClick}
     title={title}
-    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:bg-white hover:shadow-sm ${color}`}
+    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:bg-slate-50 ${color}`}
   >
     <i className={`fa-solid ${icon} text-sm`}></i>
   </button>

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Student, Asatidz, AttendanceRecord, AsatidzAttendanceRecord, ProgressRecord, PaymentRecord, ViewType, AttendanceStatus, User } from './types';
 import { INITIAL_STUDENTS, INITIAL_ASATIDZ, TPQ_NAME, TPQ_LOCATION, TPQ_ADDRESS } from './constants';
 import Dashboard from './components/Dashboard';
@@ -23,6 +23,7 @@ const App: React.FC = () => {
   const [progress, setProgress] = useState<ProgressRecord[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
 
+  // Load Initial Data
   useEffect(() => {
     const savedUser = localStorage.getItem('tpq_session');
     if (savedUser) {
@@ -52,6 +53,7 @@ const App: React.FC = () => {
     if (savedPayments) setPayments(JSON.parse(savedPayments));
   }, []);
 
+  // Redirect on Auth Change
   useEffect(() => {
     if (currentUser) {
       if (currentUser.role === 'santri') setView('my-progress');
@@ -59,6 +61,7 @@ const App: React.FC = () => {
     }
   }, [currentUser]);
 
+  // Persist Data
   useEffect(() => {
     localStorage.setItem('tpq_students', JSON.stringify(students));
     localStorage.setItem('tpq_asatidz', JSON.stringify(asatidz));
@@ -73,13 +76,12 @@ const App: React.FC = () => {
     localStorage.setItem('tpq_session', JSON.stringify(user));
   };
 
-  const handleLogout = () => {
-    if (window.confirm('Apakah Anda yakin ingin keluar?')) {
-      setCurrentUser(null);
-      localStorage.removeItem('tpq_session');
-      setView('dashboard');
-    }
-  };
+  const handleLogout = useCallback(() => {
+    // Kami menghapus localStorage terlebih dahulu untuk memastikan session bersih
+    localStorage.removeItem('tpq_session');
+    setCurrentUser(null);
+    setView('dashboard');
+  }, []);
 
   const handleAddAsatidz = (newUstadz: Omit<Asatidz, 'id'>) => {
     const ustadz: Asatidz = { ...newUstadz, id: Math.random().toString(36).substr(2, 9) };
@@ -178,6 +180,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50/50">
+      {/* Sidebar Desktop */}
       <nav className="hidden md:flex w-72 bg-white border-r border-slate-100 p-8 flex-col sticky top-0 h-screen z-10">
         <div className="flex items-center gap-3 mb-10 px-2">
           <div className="bg-emerald-600 w-14 h-14 rounded-[1.25rem] flex items-center justify-center text-white shadow-emerald-200 shadow-xl border-2 border-amber-300">
@@ -218,11 +221,18 @@ const App: React.FC = () => {
             <p className="text-[8px] text-slate-400 font-bold uppercase mb-3 leading-tight tracking-tighter">
               <i className="fa-solid fa-location-dot mr-1 text-emerald-500"></i> {TPQ_ADDRESS}
             </p>
-            <button onClick={handleLogout} className="w-full py-2.5 bg-white text-red-500 text-xs font-bold rounded-xl border border-red-100 hover:bg-red-50 hover:border-red-200 transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"><i className="fa-solid fa-right-from-bracket"></i> Keluar</button>
+            <button 
+              type="button"
+              onClick={handleLogout} 
+              className="w-full py-2.5 bg-white text-red-500 text-xs font-bold rounded-xl border border-red-100 hover:bg-red-50 hover:border-red-200 transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-95"
+            >
+              <i className="fa-solid fa-right-from-bracket"></i> Keluar
+            </button>
           </div>
         </div>
       </nav>
 
+      {/* Header Mobile */}
       <header className="md:hidden bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-2">
           <div className="bg-emerald-600 w-9 h-9 rounded-lg flex items-center justify-center text-white shadow-md border border-amber-300"><i className="fa-solid fa-book-quran text-sm"></i></div>
@@ -232,7 +242,13 @@ const App: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={handleLogout} className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center border border-red-100 cursor-pointer active:scale-90 transition-transform"><i className="fa-solid fa-power-off text-xs"></i></button>
+          <button 
+            type="button"
+            onClick={handleLogout} 
+            className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center border border-red-100 cursor-pointer active:scale-90 transition-transform"
+          >
+            <i className="fa-solid fa-power-off text-xs"></i>
+          </button>
         </div>
       </header>
 
@@ -250,6 +266,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
+      {/* Navigasi Bawah Mobile */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-slate-100 px-2 py-4 shadow-[0_-10px_25px_-5px_rgba(0,0,0,0.05)]">
         {isAsatidz ? (
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-y-4 gap-x-1 max-w-lg mx-auto">
@@ -258,11 +275,12 @@ const App: React.FC = () => {
             <MobileNavItem active={view === 'asatidz'} icon="fa-chalkboard-user" label="Asatidz" onClick={() => setView('asatidz')} />
             <MobileNavItem active={view === 'progress'} icon="fa-book-open" label="Log" onClick={() => setView('progress')} />
             <MobileNavItem active={view === 'attendance'} icon="fa-calendar-check" label="Presensi" onClick={() => setView('attendance')} />
-            <MobileNavItem active={view === 'asatidz-attendance'} icon="fa-user-check" label="Presensi Guru" onClick={() => setView('asatidz-attendance')} />
+            <MobileNavItem active={view === 'asatidz-attendance'} icon="fa-user-check" label="Guru" onClick={() => setView('asatidz-attendance')} />
             <MobileNavItem active={view === 'payments'} icon="fa-wallet" label="Syahriah" onClick={() => setView('payments')} />
             <button 
+              type="button"
               onClick={handleLogout} 
-              className="flex flex-col items-center justify-center gap-1.5 transition-all text-red-500 active:scale-90"
+              className="flex flex-col items-center justify-center gap-1.5 transition-all text-red-500 active:scale-90 cursor-pointer"
             >
               <div className="w-10 h-10 rounded-2xl flex items-center justify-center transition-all bg-red-50 text-red-500 border border-red-100">
                 <i className="fa-solid fa-right-from-bracket text-sm"></i>
@@ -273,7 +291,16 @@ const App: React.FC = () => {
         ) : (
           <div className="flex items-center justify-center gap-12">
             <MobileNavItem active={view === 'my-progress'} icon="fa-graduation-cap" label="Progres" onClick={() => setView('my-progress')} />
-            <button onClick={handleLogout} className="flex flex-col items-center justify-center gap-1.5 transition-all text-red-500 active:scale-90"><div className="w-12 h-12 rounded-2xl flex items-center justify-center transition-all bg-red-50 shadow-sm border border-red-100"><i className="fa-solid fa-power-off text-lg"></i></div><span className="text-[10px] font-extrabold uppercase tracking-wider">Keluar</span></button>
+            <button 
+              type="button"
+              onClick={handleLogout} 
+              className="flex flex-col items-center justify-center gap-1.5 transition-all text-red-500 active:scale-90 cursor-pointer"
+            >
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center transition-all bg-red-50 shadow-sm border border-red-100">
+                <i className="fa-solid fa-power-off text-lg"></i>
+              </div>
+              <span className="text-[10px] font-extrabold uppercase tracking-wider">Keluar</span>
+            </button>
           </div>
         )}
       </nav>
@@ -283,13 +310,21 @@ const App: React.FC = () => {
 
 interface NavItemProps { active: boolean; icon: string; label: string; onClick: () => void; }
 const NavItem: React.FC<NavItemProps> = ({ active, icon, label, onClick }) => (
-  <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all font-bold text-sm cursor-pointer ${active ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-200/50 translate-x-1' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}>
+  <button 
+    type="button"
+    onClick={onClick} 
+    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all font-bold text-sm cursor-pointer ${active ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-200/50 translate-x-1' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
+  >
     <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${active ? 'bg-white/20' : 'bg-slate-50'}`}><i className={`fa-solid ${icon} ${active ? 'text-white' : 'text-slate-400'}`}></i></div>{label}
   </button>
 );
 
 const MobileNavItem: React.FC<NavItemProps> = ({ active, icon, label, onClick }) => (
-  <button onClick={onClick} className={`flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${active ? 'text-emerald-600' : 'text-slate-400'}`}>
+  <button 
+    type="button"
+    onClick={onClick} 
+    className={`flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${active ? 'text-emerald-600' : 'text-slate-400'}`}
+  >
     <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${active ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100 scale-110' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}><i className={`fa-solid ${icon} text-base`}></i></div><span className={`text-[8px] font-black uppercase tracking-tighter ${active ? 'text-emerald-700' : 'text-slate-400'}`}>{label}</span>
   </button>
 );
