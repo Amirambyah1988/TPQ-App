@@ -1,22 +1,42 @@
 
 export type AttendanceStatus = 'Hadir' | 'Izin' | 'Sakit' | 'Alpa';
 export type UserRole = 'asatidz' | 'santri';
+export type FluencyLevel = 'Lancar' | 'Cukup' | 'Kurang';
 
 export interface User {
   id: string;
   name: string;
   username: string;
   role: UserRole;
-  password?: string; // In a real app, this wouldn't be handled like this
-  studentId?: string; // Linked student record for santri role
+  password?: string;
+  studentId?: string;
+  asatidzId?: string;
+}
+
+export interface Asatidz {
+  id: string;
+  name: string;
+  nik: string;
+  phone: string;
+  address: string;
+  specialization: string; // e.g., Tajwid, Tahfidz, Fiqh
+  assignedClasses: string[]; // Classes they teach
+  joinDate: string;
+  status: 'Aktif' | 'Cuti' | 'Non-Aktif';
+  photo?: string;
 }
 
 export interface Student {
   id: string;
   name: string;
+  nik: string;
+  placeOfBirth: string;
+  dateOfBirth: string;
+  fatherName: string;
+  motherName: string;
   class: string;
-  parentName: string;
   joinDate: string;
+  photo?: string; // base64 string
 }
 
 export interface AttendanceRecord {
@@ -24,6 +44,27 @@ export interface AttendanceRecord {
   studentId: string;
   date: string;
   status: AttendanceStatus;
+}
+
+export interface AsatidzAttendanceRecord {
+  id: string;
+  asatidzId: string;
+  date: string;
+  status: AttendanceStatus;
+}
+
+export interface ProgressRecord {
+  id: string;
+  studentId: string;
+  date: string;
+  readingType: 'Iqra' | 'Al-Quran';
+  readingLevel: string; // e.g., Volume 1 or Juz 30
+  readingPage: string;
+  fluency: FluencyLevel;
+  memorizationSurah: string;
+  memorizationDua: string;
+  memorizationHadith: string;
+  notes?: string;
 }
 
 export interface PaymentRecord {
@@ -36,4 +77,4 @@ export interface PaymentRecord {
   status: 'Lunas' | 'Belum Lunas';
 }
 
-export type ViewType = 'dashboard' | 'students' | 'attendance' | 'payments' | 'reports' | 'my-progress' | 'my-payments';
+export type ViewType = 'dashboard' | 'asatidz' | 'students' | 'attendance' | 'asatidz-attendance' | 'progress' | 'payments' | 'reports' | 'my-progress' | 'my-payments';
