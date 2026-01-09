@@ -19,6 +19,7 @@ const PaymentTracker: React.FC<PaymentTrackerProps> = ({ students, payments, onT
   
   const [historyStudent, setHistoryStudent] = useState<Student | null>(null);
   const [paymentConfirm, setPaymentConfirm] = useState<{student: Student, selectedMonths: number[]} | null>(null);
+  const [showYearlyRecap, setShowYearlyRecap] = useState(false);
 
   const filteredStudents = useMemo(() => {
     return students.filter(s => 
@@ -66,6 +67,27 @@ const PaymentTracker: React.FC<PaymentTrackerProps> = ({ students, payments, onT
     setPaymentConfirm({ ...paymentConfirm, selectedMonths: Array.from(new Set([...paymentConfirm.selectedMonths, ...months])).sort((a,b) => a-b) });
   };
 
+  const downloadYearlyCSV = () => {
+    const headers = ['Nama Santri', 'Kelas', ...MONTHS, 'Total Lunas'];
+    const rows = students.map(s => {
+      let lunasCount = 0;
+      const monthStatus = MONTHS.map((_, i) => {
+        const isPaid = payments.some(p => p.studentId === s.id && p.month === i && p.year === viewYear && p.status === 'Lunas');
+        if (isPaid) lunasCount++;
+        return isPaid ? 'LUNAS' : '-';
+      });
+      return [s.name, s.class, ...monthStatus, lunasCount];
+    });
+
+    const csvContent = [headers, ...rows].map(e => e.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `rekap_syahriah_tpq_${viewYear}.csv`;
+    link.click();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -74,6 +96,12 @@ const PaymentTracker: React.FC<PaymentTrackerProps> = ({ students, payments, onT
           <p className="text-slate-500 text-sm font-bold">Manajemen iuran operasional TPQ.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button 
+            onClick={() => setShowYearlyRecap(true)}
+            className="bg-indigo-50 text-indigo-600 border border-indigo-100 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
+          >
+            <i className="fa-solid fa-table-list mr-2"></i> Rekap Tahunan
+          </button>
           <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm flex items-center gap-2">
             <span className="text-[10px] font-black text-slate-400 uppercase">Tahun</span>
             <select value={viewYear} onChange={e => setViewYear(Number(e.target.value))} className="text-xs font-black text-slate-700 outline-none bg-transparent">
@@ -162,6 +190,86 @@ const PaymentTracker: React.FC<PaymentTrackerProps> = ({ students, payments, onT
           </table>
         </div>
       </div>
+
+      {/* Modal Rekap Tahunan Global */}
+      {showYearlyRecap && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-6xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in duration-300">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div>
+                <h3 className="text-xl font-black text-slate-800 tracking-tight">Rekap Syahriah Global {viewYear}</h3>
+                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mt-1">Laporan Tahunan Seluruh Santri</p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={downloadYearlyCSV} className="bg-emerald-600 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100">
+                  <i className="fa-solid fa-file-csv mr-2"></i> Unduh CSV
+                </button>
+                <button onClick={() => setShowYearlyRecap(false)} className="w-10 h-10 rounded-full bg-white text-slate-400 border border-slate-200 shadow-sm flex items-center justify-center hover:text-slate-600"><i className="fa-solid fa-times"></i></button>
+              </div>
+            </div>
+            <div className="overflow-auto flex-grow">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-white border-b border-slate-100 sticky top-0 z-20">
+                  <tr>
+                    <th className="px-6 py-4 font-black text-slate-400 uppercase tracking-widest sticky left-0 bg-white shadow-[2px_0_5px_rgba(0,0,0,0.02)]">Santri</th>
+                    {MONTHS.map(m => (
+                      <th key={m} className="px-3 py-4 font-black text-slate-400 uppercase tracking-widest text-center min-w-[60px]">{m.substring(0, 3)}</th>
+                    ))}
+                    <th className="px-6 py-4 font-black text-slate-400 uppercase tracking-widest text-center bg-slate-50">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {students.map(s => {
+                    let totalPaid = 0;
+                    return (
+                      <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-3 font-bold text-slate-700 sticky left-0 bg-white z-10 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+                          <p className="leading-none">{s.name}</p>
+                          <p className="text-[9px] text-slate-400 font-bold mt-1 uppercase tracking-tighter">{s.class}</p>
+                        </td>
+                        {MONTHS.map((_, i) => {
+                          const isPaid = payments.some(p => p.studentId === s.id && p.month === i && p.year === viewYear && p.status === 'Lunas');
+                          if (isPaid) totalPaid++;
+                          return (
+                            <td key={i} className="px-3 py-3 text-center">
+                              {isPaid ? (
+                                <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-500 flex items-center justify-center mx-auto border border-emerald-100 shadow-sm">
+                                  <i className="fa-solid fa-check text-[10px]"></i>
+                                </div>
+                              ) : (
+                                <div className="w-6 h-6 rounded-lg bg-slate-50 text-slate-200 flex items-center justify-center mx-auto border border-slate-100">
+                                  <i className="fa-solid fa-minus text-[10px]"></i>
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="px-6 py-3 text-center bg-slate-50">
+                          <span className="font-black text-slate-800">{totalPaid}</span>
+                          <span className="text-[9px] text-slate-400 ml-1">Bln</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+               <div className="flex gap-8">
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Santri</p>
+                    <p className="text-lg font-black text-slate-800">{students.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tahun Berjalan</p>
+                    <p className="text-lg font-black text-indigo-600">{viewYear}</p>
+                  </div>
+               </div>
+               <p className="text-[9px] font-bold text-slate-400 italic italic">Tanda centang hijau menunjukkan pembayaran lunas.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Konfirmasi Pembayaran */}
       {paymentConfirm && (

@@ -12,6 +12,7 @@ import PaymentTracker from './components/PaymentTracker';
 import ReportGenerator from './components/ReportGenerator';
 import AuthScreen from './components/Auth/AuthScreen';
 import SantriView from './components/SantriView';
+import DataSync from './components/DataSync';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -22,36 +23,29 @@ const App: React.FC = () => {
   const [asatidzAttendance, setAsatidzAttendance] = useState<AsatidzAttendanceRecord[]>([]);
   const [progress, setProgress] = useState<ProgressRecord[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [toast, setToast] = useState<{message: string, type: 'success' | 'danger'} | null>(null);
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'danger' | 'info'} | null>(null);
+  
+  const [syncId, setSyncId] = useState<string | null>(localStorage.getItem('tpq_sync_id'));
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  const showToast = (message: string, type: 'success' | 'danger' = 'success') => {
+  const showToast = (message: string, type: 'success' | 'danger' | 'info' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Load Data
   useEffect(() => {
     const savedUser = localStorage.getItem('tpq_session');
     if (savedUser) {
       try { setCurrentUser(JSON.parse(savedUser)); } catch (e) { localStorage.removeItem('tpq_session'); }
     }
-
-    const savedStudents = localStorage.getItem('tpq_students');
-    const savedAsatidz = localStorage.getItem('tpq_asatidz');
-    const savedAttendance = localStorage.getItem('tpq_attendance');
-    const savedAsatidzAttendance = localStorage.getItem('tpq_asatidz_attendance');
-    const savedProgress = localStorage.getItem('tpq_progress');
-    const savedPayments = localStorage.getItem('tpq_payments');
-
-    setStudents(savedStudents ? JSON.parse(savedStudents) : INITIAL_STUDENTS);
-    setAsatidz(savedAsatidz ? JSON.parse(savedAsatidz) : INITIAL_ASATIDZ);
-    setAttendance(savedAttendance ? JSON.parse(savedAttendance) : []);
-    setAsatidzAttendance(savedAsatidzAttendance ? JSON.parse(savedAsatidzAttendance) : []);
-    setProgress(savedProgress ? JSON.parse(savedProgress) : []);
-    setPayments(savedPayments ? JSON.parse(savedPayments) : []);
+    setStudents(JSON.parse(localStorage.getItem('tpq_students') || JSON.stringify(INITIAL_STUDENTS)));
+    setAsatidz(JSON.parse(localStorage.getItem('tpq_asatidz') || JSON.stringify(INITIAL_ASATIDZ)));
+    setAttendance(JSON.parse(localStorage.getItem('tpq_attendance') || '[]'));
+    setAsatidzAttendance(JSON.parse(localStorage.getItem('tpq_asatidz_attendance') || '[]'));
+    setProgress(JSON.parse(localStorage.getItem('tpq_progress') || '[]'));
+    setPayments(JSON.parse(localStorage.getItem('tpq_payments') || '[]'));
   }, []);
 
-  // Sync LocalStorage
   useEffect(() => {
     localStorage.setItem('tpq_students', JSON.stringify(students));
     localStorage.setItem('tpq_asatidz', JSON.stringify(asatidz));
@@ -61,11 +55,120 @@ const App: React.FC = () => {
     localStorage.setItem('tpq_payments', JSON.stringify(payments));
   }, [students, asatidz, attendance, asatidzAttendance, progress, payments]);
 
+  // Function to strip photos to keep data small for cloud sync (< 50KB limit of npoint)
+  const getOptimizedData = () => {
+    const cleanStudents = students.map(({ photo, ...rest }) => rest);
+    const cleanAsatidz = asatidz.map(({ photo, ...rest }) => rest);
+    return { 
+      students: cleanStudents, 
+      asatidz: cleanAsatidz, 
+      attendance, 
+      asatidzAttendance, 
+      progress, 
+      payments, 
+      lastUpdate: new Date().toISOString() 
+    };
+  };
+
+  const handlePushToCloud = async () => {
+    if (!syncId) return;
+    setIsSyncing(true);
+    try {
+      const data = getOptimizedData();
+      const response = await fetch(`https://api.npoint.io/${syncId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (response.ok) showToast('Data MEGA Sinkron!', 'success');
+      else throw new Error('Response not OK');
+    } catch (e) {
+      console.error(e);
+      showToast('Gagal Update Cloud (Cek Koneksi)', 'danger');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handlePullFromCloud = async (targetId?: string) => {
+    const id = targetId || syncId;
+    if (!id) return false;
+    setIsSyncing(true);
+    try {
+      const response = await fetch(`https://api.npoint.io/${id}`);
+      if (response.ok) {
+        const data = await response.json();
+        // Merge data, keeping local photos if IDs match
+        if (data.students) {
+          const mergedStudents = data.students.map((s: Student) => {
+            const local = students.find(ls => ls.id === s.id);
+            return local ? { ...s, photo: local.photo } : s;
+          });
+          setStudents(mergedStudents);
+        }
+        if (data.asatidz) {
+          const mergedAsatidz = data.asatidz.map((a: Asatidz) => {
+            const local = asatidz.find(la => la.id === a.id);
+            return local ? { ...a, photo: local.photo } : a;
+          });
+          setAsatidz(mergedAsatidz);
+        }
+        if (data.attendance) setAttendance(data.attendance);
+        if (data.asatidzAttendance) setAsatidzAttendance(data.asatidzAttendance);
+        if (data.progress) setProgress(data.progress);
+        if (data.payments) setPayments(data.payments);
+        showToast('Sinkronisasi MEGA Berhasil!', 'success');
+        return true;
+      } else throw new Error('Cloud Storage Tidak Ditemukan');
+    } catch (e) {
+      showToast('Secure Key Salah atau Expired', 'danger');
+      return false;
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleCreateCloudSync = async () => {
+    setIsSyncing(true);
+    try {
+      const data = getOptimizedData();
+      // npoint creation endpoint
+      const response = await fetch('https://api.npoint.io/bins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: data })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.id) {
+          setSyncId(result.id);
+          localStorage.setItem('tpq_sync_id', result.id);
+          showToast('MEGA Storage Siap!', 'success');
+        } else throw new Error('No ID returned');
+      } else {
+        const errData = await response.text();
+        console.error("Npoint Error:", errData);
+        throw new Error('Gagal membuat storage baru');
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('Inisialisasi Gagal (Limit Ukuran Data?)', 'danger');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleSetSyncId = (id: string | null) => {
+    setSyncId(id);
+    if (id) localStorage.setItem('tpq_sync_id', id);
+    else localStorage.removeItem('tpq_sync_id');
+  };
+
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     localStorage.setItem('tpq_session', JSON.stringify(user));
-    if (user.role === 'santri') setView('my-progress');
-    else setView('dashboard');
+    setView(user.role === 'santri' ? 'my-progress' : 'dashboard');
     showToast(`Selamat datang, ${user.name}`);
   };
 
@@ -75,38 +178,34 @@ const App: React.FC = () => {
     setView('dashboard');
   }, []);
 
-  const handleDeleteStudent = (id: string) => {
-    setStudents(prev => prev.filter(s => s.id !== id));
-    setAttendance(prev => prev.filter(a => a.studentId !== id));
-    setProgress(prev => prev.filter(p => p.studentId !== id));
-    setPayments(prev => prev.filter(p => p.studentId !== id));
-    showToast('Data Santri berhasil dihapus', 'danger');
-  };
-
-  const handleDeleteAsatidz = (id: string) => {
-    setAsatidz(prev => prev.filter(u => u.id !== id));
-    setAsatidzAttendance(prev => prev.filter(a => a.asatidzId !== id));
-    showToast('Data Asatidz berhasil dihapus', 'danger');
-  };
-
-  const handleUpdateStudent = (updated: Student) => {
-    setStudents(prev => prev.map(s => s.id === updated.id ? updated : s));
-    showToast('Data Santri berhasil diperbarui');
-  };
-
-  const handleUpdateAsatidz = (updated: Asatidz) => {
-    setAsatidz(prev => prev.map(u => u.id === updated.id ? updated : u));
-    showToast('Data Asatidz berhasil diperbarui');
-  };
-
   const handleAddStudent = (s: Omit<Student, 'id'>) => {
     setStudents(prev => [...prev, { ...s, id: 'st-' + Date.now() }]);
-    showToast('Santri baru berhasil didaftarkan');
+    showToast('Santri terdaftar');
   };
 
   const handleAddAsatidz = (u: Omit<Asatidz, 'id'>) => {
     setAsatidz(prev => [...prev, { ...u, id: 'at-' + Date.now() }]);
-    showToast('Asatidz baru berhasil didaftarkan');
+    showToast('Asatidz terdaftar');
+  };
+
+  const handleUpdateStudent = (updated: Student) => {
+    setStudents(prev => prev.map(s => s.id === updated.id ? updated : s));
+    showToast('Data Santri diperbarui');
+  };
+
+  const handleUpdateAsatidz = (updated: Asatidz) => {
+    setAsatidz(prev => prev.map(u => u.id === updated.id ? updated : u));
+    showToast('Data Asatidz diperbarui');
+  };
+
+  const handleDeleteStudent = (id: string) => {
+    setStudents(prev => prev.filter(s => s.id !== id));
+    showToast('Data Santri dihapus', 'danger');
+  };
+
+  const handleDeleteAsatidz = (id: string) => {
+    setAsatidz(prev => prev.filter(u => u.id !== id));
+    showToast('Data Asatidz dihapus', 'danger');
   };
 
   const handleMarkAttendance = (studentId: string, date: string, status: AttendanceStatus) => {
@@ -117,7 +216,7 @@ const App: React.FC = () => {
         up[idx] = { ...up[idx], status };
         return up;
       }
-      return [...prev, { id: 'att-' + Date.now() + Math.random(), studentId, date, status }];
+      return [...prev, { id: 'att-' + Date.now(), studentId, date, status }];
     });
   };
 
@@ -129,13 +228,13 @@ const App: React.FC = () => {
         up[idx] = { ...up[idx], status };
         return up;
       }
-      return [...prev, { id: 'aat-' + Date.now() + Math.random(), asatidzId, date, status }];
+      return [...prev, { id: 'aat-' + Date.now(), asatidzId, date, status }];
     });
   };
 
   const handleSaveProgress = (record: Omit<ProgressRecord, 'id'>) => {
     setProgress(prev => [{ id: 'prog-' + Date.now(), ...record }, ...prev]);
-    showToast('Progres belajar berhasil disimpan');
+    showToast('Progres disimpan');
   };
 
   const handleTogglePayment = (studentId: string, month: number, year: number, amount: number) => {
@@ -145,10 +244,8 @@ const App: React.FC = () => {
         const up = [...prev];
         const newStatus = up[idx].status === 'Lunas' ? 'Belum Lunas' : 'Lunas';
         up[idx] = { ...up[idx], status: newStatus, paidDate: newStatus === 'Lunas' ? new Date().toISOString() : null };
-        if (newStatus === 'Lunas') showToast('Pembayaran berhasil dikonfirmasi');
         return up;
       }
-      showToast('Pembayaran berhasil dikonfirmasi');
       return [...prev, { id: 'pay-' + Date.now(), studentId, month, year, amount, status: 'Lunas', paidDate: new Date().toISOString() }];
     });
   };
@@ -166,7 +263,17 @@ const App: React.FC = () => {
       });
       return updated;
     });
-    showToast(`Pelunasan ${selectedMonths.length} bulan berhasil`);
+    showToast(`Pelunasan berhasil`);
+  };
+
+  const handleImport = (data: any) => {
+    if (data.students) setStudents(data.students);
+    if (data.asatidz) setAsatidz(data.asatidz);
+    if (data.attendance) setAttendance(data.attendance);
+    if (data.asatidzAttendance) setAsatidzAttendance(data.asatidzAttendance);
+    if (data.progress) setProgress(data.progress);
+    if (data.payments) setPayments(data.payments);
+    showToast('Data berhasil dipulihkan!');
   };
 
   if (!currentUser) return <AuthScreen onLogin={handleLogin} />;
@@ -174,57 +281,65 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 relative">
-      {/* Toast Notification */}
+      {/* Toast */}
       {toast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-top-4 fade-in duration-300">
-          <div className={`${toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-500'} text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-white/20 backdrop-blur-md`}>
-            <i className={`fa-solid ${toast.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>
-            <span className="text-xs font-black uppercase tracking-widest">{toast.message}</span>
+          <div className={`${toast.type === 'success' ? 'bg-red-600' : toast.type === 'info' ? 'bg-slate-800' : 'bg-red-500'} text-white px-6 py-3 rounded-2xl shadow-xl flex items-center gap-3 border border-white/10`}>
+            <i className={`fa-solid ${toast.type === 'success' ? 'fa-cloud-arrow-up' : toast.type === 'info' ? 'fa-info-circle' : 'fa-triangle-exclamation'}`}></i>
+            <span className="text-xs font-bold uppercase tracking-widest">{toast.message}</span>
           </div>
         </div>
       )}
 
-      {/* Sidebar Navigation (Desktop) */}
-      <nav className="hidden md:flex w-72 bg-white border-r border-slate-100 p-8 flex-col sticky top-0 h-screen z-10 shadow-sm">
+      {/* Sidebar Navigation */}
+      <nav className="hidden md:flex w-72 bg-white border-r border-slate-100 p-8 flex-col sticky top-0 h-screen z-10">
         <div className="flex items-center gap-3 mb-10 px-2">
-          <div className="bg-emerald-600 w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg border-2 border-amber-300">
-            <i className="fa-solid fa-book-quran text-xl"></i>
+          <div className="bg-red-600 w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg border-2 border-white/20">
+            <span className="font-black italic text-xl">M</span>
           </div>
           <div>
             <h1 className="font-black text-slate-800 text-sm leading-none">{TPQ_NAME}</h1>
-            <span className="text-[9px] text-emerald-600 font-bold uppercase mt-1 block">{TPQ_LOCATION}</span>
+            <span className="text-[9px] text-red-600 font-bold uppercase mt-1 block tracking-widest">{TPQ_LOCATION}</span>
           </div>
         </div>
 
-        <div className="space-y-1 flex-grow overflow-y-auto pr-2 scrollbar-hide">
+        <div className="space-y-1 flex-grow overflow-y-auto pr-2 custom-scrollbar">
           {isAdmin ? (
             <>
-              <NavItem active={view === 'dashboard'} icon="fa-house" label="Home" onClick={() => setView('dashboard')} />
-              <NavItem active={view === 'asatidz'} icon="fa-chalkboard-user" label="Asatidz" onClick={() => setView('asatidz')} />
-              <NavItem active={view === 'students'} icon="fa-users" label="Santri" onClick={() => setView('students')} />
-              <NavItem active={view === 'attendance'} icon="fa-calendar-check" label="Absensi" onClick={() => setView('attendance')} />
-              <NavItem active={view === 'progress'} icon="fa-book-open" label="Log Progress" onClick={() => setView('progress')} />
-              <NavItem active={view === 'payments'} icon="fa-wallet" label="Bayar" onClick={() => setView('payments')} />
-              <div className="pt-6 pb-2">
-                <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest px-4">Lainnya</p>
-              </div>
-              <NavItem active={view === 'reports'} icon="fa-wand-magic-sparkles" label="Laporan AI" onClick={() => setView('reports')} />
+              <NavItem active={view === 'dashboard'} icon="fa-house" label="Dashboard" onClick={() => setView('dashboard')} />
+              <NavItem active={view === 'asatidz'} icon="fa-chalkboard-user" label="Data Asatidz" onClick={() => setView('asatidz')} />
+              <NavItem active={view === 'students'} icon="fa-users" label="Daftar Santri" onClick={() => setView('students')} />
+              <NavItem active={view === 'attendance'} icon="fa-calendar-check" label="Absensi Santri" onClick={() => setView('attendance')} />
               <NavItem active={view === 'asatidz-attendance'} icon="fa-user-check" label="Absensi Asatidz" onClick={() => setView('asatidz-attendance')} />
+              <NavItem active={view === 'progress'} icon="fa-book-open" label="Log Progress" onClick={() => setView('progress')} />
+              <NavItem active={view === 'payments'} icon="fa-wallet" label="Uang Syahriah" onClick={() => setView('payments')} />
+              <div className="pt-4 pb-2"><p className="text-[9px] font-black text-slate-300 uppercase px-4 tracking-[0.2em]">Mega System</p></div>
+              <NavItem active={view === 'reports'} icon="fa-wand-magic-sparkles" label="Laporan AI" onClick={() => setView('reports')} />
+              <NavItem active={view === 'settings'} icon="fa-cloud" label="Cloud Sync" onClick={() => setView('settings')} />
             </>
           ) : (
             <>
-              <NavItem active={view === 'my-progress'} icon="fa-house" label="Home" onClick={() => setView('my-progress')} />
-              <NavItem active={view === 'my-payments'} icon="fa-receipt" label="Bayar" onClick={() => setView('my-payments')} />
+              <NavItem active={view === 'my-progress'} icon="fa-house" label="Beranda" onClick={() => setView('my-progress')} />
+              <NavItem active={view === 'my-payments'} icon="fa-receipt" label="Info Syahriah" onClick={() => setView('my-payments')} />
             </>
           )}
         </div>
 
+        {syncId && (
+          <div className="mb-4 px-4 py-3 bg-red-50 rounded-2xl border border-red-100 flex items-center justify-between group cursor-pointer hover:bg-red-100 transition-colors" onClick={handlePushToCloud}>
+            <div>
+              <p className="text-[8px] font-black text-red-600 uppercase">Cloud Active</p>
+              <p className="text-[10px] font-bold text-slate-500 font-mono tracking-tighter">ID: {syncId.substring(0,6)}...</p>
+            </div>
+            <button disabled={isSyncing} className={`text-red-600 hover:scale-110 transition-transform ${isSyncing ? 'animate-spin' : ''}`}>
+              <i className="fa-solid fa-rotate"></i>
+            </button>
+          </div>
+        )}
+
         <div className="mt-auto pt-6 border-t border-slate-100">
-          <button 
-            onClick={handleLogout} 
-            className="w-full py-3.5 bg-red-50 text-red-500 text-xs font-black rounded-xl border border-red-100 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2 group"
-          >
-            <i className="fa-solid fa-right-from-bracket group-hover:translate-x-1 transition-transform"></i> Logout
+          <button onClick={handleLogout} className="w-full py-4 bg-slate-50 text-slate-500 text-xs font-black rounded-xl border border-slate-100 hover:bg-red-500 hover:text-white transition-all uppercase tracking-widest">
+            Logout
           </button>
         </div>
       </nav>
@@ -241,45 +356,73 @@ const App: React.FC = () => {
           {view === 'payments' && <PaymentTracker students={students} payments={payments} onTogglePayment={handleTogglePayment} onBulkPayment={handleBulkPayment} />}
           {view === 'reports' && <ReportGenerator students={students} attendance={attendance} payments={payments} />}
           {view === 'my-progress' && <SantriView user={currentUser!} students={students} attendance={attendance} payments={payments} progress={progress} />}
+          {view === 'settings' && (
+            <DataSync 
+              students={students} 
+              asatidz={asatidz} 
+              attendance={attendance} 
+              asatidzAttendance={asatidzAttendance} 
+              payments={payments} 
+              progress={progress} 
+              syncId={syncId} 
+              isSyncing={isSyncing} 
+              onPull={handlePullFromCloud} 
+              onSetSyncId={handleSetSyncId} 
+              onCreateSync={handleCreateCloudSync}
+              onImport={handleImport} 
+            />
+          )}
         </div>
       </main>
 
       {/* Mobile Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 py-2 px-1 flex overflow-x-auto scrollbar-hide items-center z-50 shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
-        {isAdmin ? (
-          <div className="flex w-full min-w-max justify-around px-2 gap-1">
-            <MobileNavItem active={view === 'dashboard'} icon="fa-house" onClick={() => setView('dashboard')} label="Home" />
-            <MobileNavItem active={view === 'asatidz'} icon="fa-chalkboard-user" onClick={() => setView('asatidz')} label="Asatidz" />
-            <MobileNavItem active={view === 'students'} icon="fa-users" onClick={() => setView('students')} label="Santri" />
-            <MobileNavItem active={view === 'attendance'} icon="fa-calendar-check" onClick={() => setView('attendance')} label="Absensi" />
-            <MobileNavItem active={view === 'progress'} icon="fa-book-open" onClick={() => setView('progress')} label="Log" />
-            <MobileNavItem active={view === 'payments'} icon="fa-wallet" onClick={() => setView('payments')} label="Bayar" />
-            <MobileNavItem active={false} icon="fa-right-from-bracket" onClick={handleLogout} label="Logout" isDanger />
-          </div>
-        ) : (
-          <div className="flex w-full justify-around px-4">
-            <MobileNavItem active={view === 'my-progress'} icon="fa-house" onClick={() => setView('my-progress')} label="Home" />
-            <MobileNavItem active={view === 'my-payments'} icon="fa-receipt" onClick={() => setView('my-payments')} label="Bayar" />
-            <MobileNavItem active={false} icon="fa-right-from-bracket" onClick={handleLogout} label="Logout" isDanger />
-          </div>
-        )}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 h-20 px-2 flex items-center z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.1)]">
+        <div className="flex w-full overflow-x-auto gap-4 px-2 py-2 no-scrollbar scroll-smooth items-center">
+          {isAdmin ? (
+            <>
+              <MobileNavItem active={view === 'dashboard'} icon="fa-house" onClick={() => setView('dashboard')} label="Home" />
+              <MobileNavItem active={view === 'asatidz'} icon="fa-chalkboard-user" onClick={() => setView('asatidz')} label="Asatidz" />
+              <MobileNavItem active={view === 'students'} icon="fa-users" onClick={() => setView('students')} label="Santri" />
+              <MobileNavItem active={view === 'attendance'} icon="fa-calendar-check" onClick={() => setView('attendance')} label="Absen S" />
+              <MobileNavItem active={view === 'asatidz-attendance'} icon="fa-user-check" onClick={() => setView('asatidz-attendance')} label="Absen A" />
+              <MobileNavItem active={view === 'progress'} icon="fa-book-open" onClick={() => setView('progress')} label="Progres" />
+              <MobileNavItem active={view === 'payments'} icon="fa-wallet" onClick={() => setView('payments')} label="Bayar" />
+              <MobileNavItem active={view === 'settings'} icon="fa-cloud" onClick={() => setView('settings')} label="Sync" />
+            </>
+          ) : (
+            <>
+              <MobileNavItem active={view === 'my-progress'} icon="fa-house" onClick={() => setView('my-progress')} label="Home" />
+              <MobileNavItem active={view === 'my-payments'} icon="fa-receipt" onClick={() => setView('my-payments')} label="Bayar" />
+            </>
+          )}
+          <div className="min-w-[1px] h-8 bg-slate-100 mx-1"></div>
+          <MobileNavItem active={false} icon="fa-right-from-bracket" onClick={handleLogout} label="Logout" isDanger />
+        </div>
       </nav>
+      
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+      `}</style>
     </div>
   );
 };
 
 const NavItem = ({ active, icon, label, onClick }: any) => (
-  <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-xs ${active ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 hover:text-emerald-600'}`}>
-    <i className={`fa-solid ${icon} w-5`}></i>{label}
+  <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all font-bold text-xs ${active ? 'bg-red-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 hover:text-red-600'}`}>
+    <i className={`fa-solid ${icon} w-5 text-center`}></i>{label}
   </button>
 );
 
 const MobileNavItem = ({ active, icon, onClick, label, isDanger }: any) => (
-  <button onClick={onClick} className={`flex flex-col items-center gap-0.5 transition-all min-w-[56px] ${active ? 'text-emerald-600' : isDanger ? 'text-red-400' : 'text-slate-400'}`}>
-    <div className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all ${active ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-50'}`}>
+  <button onClick={onClick} className={`flex flex-col items-center gap-1 min-w-[64px] shrink-0 transition-all ${active ? 'text-red-600 scale-105' : isDanger ? 'text-red-500' : 'text-slate-400'}`}>
+    <div className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${active ? 'bg-red-600 text-white shadow-lg' : 'bg-slate-50'}`}>
       <i className={`fa-solid ${icon} text-sm`}></i>
     </div>
-    <span className="text-[7px] font-black uppercase tracking-tight">{label}</span>
+    <span className="text-[8px] font-black uppercase tracking-widest whitespace-nowrap">{label}</span>
   </button>
 );
 

@@ -98,4 +98,4 @@ export interface PaymentRecord {
   status: 'Lunas' | 'Belum Lunas';
 }
 
-export type ViewType = 'dashboard' | 'asatidz' | 'students' | 'attendance' | 'asatidz-attendance' | 'progress' | 'payments' | 'reports' | 'my-progress' | 'my-payments';
+export type ViewType = 'dashboard' | 'asatidz' | 'students' | 'attendance' | 'asatidz-attendance' | 'progress' | 'payments' | 'reports' | 'my-progress' | 'my-payments' | 'settings';

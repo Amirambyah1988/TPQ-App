@@ -13,6 +13,7 @@ const AsatidzList: React.FC<AsatidzListProps> = ({ asatidz, onAdd, onUpdate, onD
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUstadz, setEditingUstadz] = useState<Asatidz | null>(null);
   const [viewingUstadz, setViewingUstadz] = useState<Asatidz | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const initialFormData: Omit<Asatidz, 'id'> = {
@@ -58,9 +59,12 @@ const AsatidzList: React.FC<AsatidzListProps> = ({ asatidz, onAdd, onUpdate, onD
     setFormData(initialFormData);
   };
 
-  const handleDeleteClick = (id: string) => {
-    onDelete(id);
-    if (viewingUstadz?.id === id) setViewingUstadz(null);
+  const confirmDelete = () => {
+    if (deleteConfirmId) {
+      onDelete(deleteConfirmId);
+      if (viewingUstadz?.id === deleteConfirmId) setViewingUstadz(null);
+      setDeleteConfirmId(null);
+    }
   };
 
   const handleEdit = (u: Asatidz) => {
@@ -69,6 +73,8 @@ const AsatidzList: React.FC<AsatidzListProps> = ({ asatidz, onAdd, onUpdate, onD
     setIsFormOpen(true);
     setViewingUstadz(null);
   };
+
+  const targetDeleteUstadz = asatidz.find(u => u.id === deleteConfirmId);
 
   return (
     <div className="space-y-6">
@@ -117,7 +123,7 @@ const AsatidzList: React.FC<AsatidzListProps> = ({ asatidz, onAdd, onUpdate, onD
                     <button onClick={() => setViewingUstadz(u)} className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 flex items-center justify-center transition-all shadow-sm"><i className="fa-solid fa-eye text-xs"></i></button>
                     <button onClick={() => handleEdit(u)} className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-blue-600 flex items-center justify-center transition-all shadow-sm"><i className="fa-solid fa-edit text-xs"></i></button>
                     <button 
-                      onClick={() => handleDeleteClick(u.id)} 
+                      onClick={() => setDeleteConfirmId(u.id)} 
                       className="h-9 px-3 rounded-xl bg-red-50 border border-red-100 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all shadow-sm gap-2 text-[10px] font-black uppercase tracking-tighter"
                     >
                       <i className="fa-solid fa-trash-can text-[10px]"></i>
@@ -156,16 +162,12 @@ const AsatidzList: React.FC<AsatidzListProps> = ({ asatidz, onAdd, onUpdate, onD
                 <InfoItem label="Mulai Tugas" value={new Date(viewingUstadz.joinDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })} />
                 <InfoItem label="Alamat" value={viewingUstadz.address} />
                 <InfoItem label="No. HP / WA" value={viewingUstadz.phone} />
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mt-2">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Akun Portal</p>
-                  <p className="text-xs font-black text-slate-700">User: <span className="text-indigo-600">{viewingUstadz.username}</span> | Pass: <span className="text-indigo-600">{viewingUstadz.password}</span></p>
-                </div>
               </div>
 
               <div className="mt-8 flex gap-3">
                 <button onClick={() => handleEdit(viewingUstadz)} className="flex-1 py-4 bg-slate-100 text-slate-700 font-black rounded-2xl text-xs hover:bg-slate-200 transition-all uppercase tracking-widest">Edit</button>
                 <button 
-                  onClick={() => handleDeleteClick(viewingUstadz.id)} 
+                  onClick={() => setDeleteConfirmId(viewingUstadz.id)} 
                   className="flex-1 py-4 bg-red-50 text-red-500 font-black rounded-2xl text-xs hover:bg-red-500 hover:text-white transition-all shadow-sm uppercase tracking-widest"
                 >
                   Hapus
@@ -202,7 +204,6 @@ const AsatidzList: React.FC<AsatidzListProps> = ({ asatidz, onAdd, onUpdate, onD
                     </button>
                   </div>
                   <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
-                  <p className="text-[9px] font-black text-slate-400 uppercase text-center max-w-[120px]">Format: JPG/PNG, Maks: 2MB</p>
                 </div>
 
                 {/* Form Fields Section */}
@@ -218,10 +219,6 @@ const AsatidzList: React.FC<AsatidzListProps> = ({ asatidz, onAdd, onUpdate, onD
                   <div className="md:col-span-2">
                     <Input label="Alamat Lengkap" value={formData.address} onChange={v => setFormData({...formData, address: v})} />
                   </div>
-                  <div className="pt-4 border-t border-slate-100 md:col-span-2 grid grid-cols-2 gap-4">
-                    <Input label="Username Portal" value={formData.username || ''} onChange={v => setFormData({...formData, username: v})} />
-                    <Input label="Password Portal" value={formData.password || ''} onChange={v => setFormData({...formData, password: v})} />
-                  </div>
                 </div>
               </div>
 
@@ -230,6 +227,25 @@ const AsatidzList: React.FC<AsatidzListProps> = ({ asatidz, onAdd, onUpdate, onD
                 <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 text-sm hover:bg-indigo-700 transition-all uppercase tracking-widest">Simpan Data</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus Kustom */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-xs p-8 text-center shadow-2xl animate-in zoom-in duration-200">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+              <i className="fa-solid fa-trash-can"></i>
+            </div>
+            <h3 className="text-lg font-black text-slate-800 leading-tight">Hapus Asatidz?</h3>
+            <p className="text-xs font-bold text-slate-400 mt-2 leading-relaxed">
+              Apakah Anda yakin ingin menghapus data <span className="text-red-500">{targetDeleteUstadz?.name}</span>? Tindakan ini tidak dapat dibatalkan.
+            </p>
+            <div className="flex gap-3 mt-8">
+              <button onClick={() => setDeleteConfirmId(null)} className="flex-1 py-3 bg-slate-100 text-slate-500 font-black rounded-xl text-xs uppercase tracking-widest">Batal</button>
+              <button onClick={confirmDelete} className="flex-1 py-3 bg-red-500 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-red-100">Hapus</button>
+            </div>
           </div>
         </div>
       )}
