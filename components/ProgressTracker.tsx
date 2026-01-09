@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Student, ProgressRecord, FluencyLevel } from '../types';
+import React from 'react';
+import { Student, ProgressRecord, FluencyLevel, MemorizationStatus, CustomMemorization } from '../types';
 
 interface ProgressTrackerProps {
   students: Student[];
@@ -9,9 +9,9 @@ interface ProgressTrackerProps {
 }
 
 const ProgressTracker: React.FC<ProgressTrackerProps> = ({ students, progress, onSaveProgress }) => {
-  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [selectedStudentId, setSelectedStudentId] = React.useState<string>('');
+  const [date, setDate] = React.useState(new Date().toISOString().split('T')[0]);
+  const [isFormOpen, setIsFormOpen] = React.useState(false);
 
   const initialFormState: Omit<ProgressRecord, 'id' | 'studentId' | 'date'> = {
     readingType: 'Iqra',
@@ -19,12 +19,18 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ students, progress, o
     readingPage: '',
     fluency: 'Lancar',
     memorizationSurah: '',
+    memorizationSurahStatus: 'Belum',
     memorizationDua: '',
+    memorizationDuaStatus: 'Belum',
     memorizationHadith: '',
+    memorizationHadithStatus: 'Belum',
+    memorizationShalat: '',
+    memorizationShalatStatus: 'Belum',
+    customMemorization: [],
     notes: ''
   };
 
-  const [formData, setFormData] = useState(initialFormState);
+  const [formData, setFormData] = React.useState(initialFormState);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +42,21 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ students, progress, o
     });
     setIsFormOpen(false);
     setFormData(initialFormState);
+  };
+
+  const addCustomMateri = () => {
+    const newItem: CustomMemorization = { label: '', value: '', status: 'Belum' };
+    setFormData({ ...formData, customMemorization: [...(formData.customMemorization || []), newItem] });
+  };
+
+  const updateCustomMateri = (index: number, field: keyof CustomMemorization, val: string) => {
+    const updated = [...(formData.customMemorization || [])];
+    updated[index] = { ...updated[index], [field]: val };
+    setFormData({ ...formData, customMemorization: updated });
+  };
+
+  const removeCustomMateri = (index: number) => {
+    setFormData({ ...formData, customMemorization: formData.customMemorization?.filter((_, i) => i !== index) });
   };
 
   const selectedStudent = students.find(s => s.id === selectedStudentId);
@@ -69,10 +90,9 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ students, progress, o
         </div>
       </div>
 
-      {/* Form Modal - Z-INDEX INCREASED to 100 */}
       {isFormOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-xl shadow-2xl animate-in fade-in zoom-in duration-300 overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl animate-in fade-in zoom-in duration-300 overflow-hidden flex flex-col max-h-[95vh]">
             <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white z-10">
               <div>
                 <h3 className="text-xl font-extrabold text-slate-800">Log Progres Belajar</h3>
@@ -128,21 +148,44 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ students, progress, o
               </div>
 
               <div className="space-y-4 pt-2 border-t border-slate-100">
-                <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Target Hafalan Baru</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-extrabold text-slate-400 uppercase ml-1">Surat</label>
-                    <input value={formData.memorizationSurah} onChange={e => setFormData({...formData, memorizationSurah: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700" placeholder="Surat Al-..." />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-extrabold text-slate-400 uppercase ml-1">Doa</label>
-                    <input value={formData.memorizationDua} onChange={e => setFormData({...formData, memorizationDua: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700" placeholder="Doa..." />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-extrabold text-slate-400 uppercase ml-1">Hadist</label>
-                    <input value={formData.memorizationHadith} onChange={e => setFormData({...formData, memorizationHadith: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700" placeholder="Hadist..." />
-                  </div>
+                <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Hafalan Baru & Status</h4>
+                <div className="space-y-4">
+                  <MemorizationInput label="Hafalan Surat" value={formData.memorizationSurah} status={formData.memorizationSurahStatus} 
+                    onValueChange={v => setFormData({...formData, memorizationSurah: v})} 
+                    onStatusChange={s => setFormData({...formData, memorizationSurahStatus: s})} />
+                  
+                  <MemorizationInput label="Doa Harian" value={formData.memorizationDua} status={formData.memorizationDuaStatus} 
+                    onValueChange={v => setFormData({...formData, memorizationDua: v})} 
+                    onStatusChange={s => setFormData({...formData, memorizationDuaStatus: s})} />
+
+                  <MemorizationInput label="Hafalan Hadits" value={formData.memorizationHadith} status={formData.memorizationHadithStatus} 
+                    onValueChange={v => setFormData({...formData, memorizationHadith: v})} 
+                    onStatusChange={s => setFormData({...formData, memorizationHadithStatus: s})} />
+
+                  <MemorizationInput label="Praktek Shalat" value={formData.memorizationShalat} status={formData.memorizationShalatStatus} 
+                    onValueChange={v => setFormData({...formData, memorizationShalat: v})} 
+                    onStatusChange={s => setFormData({...formData, memorizationShalatStatus: s})} />
                 </div>
+              </div>
+
+              <div className="space-y-4 pt-2 border-t border-slate-100">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Materi Hafalan Kustom</h4>
+                  <button type="button" onClick={addCustomMateri} className="text-emerald-600 text-xs font-bold hover:underline">+ Tambah</button>
+                </div>
+                {formData.customMemorization?.map((m, i) => (
+                  <div key={i} className="flex gap-2 items-end">
+                    <div className="flex-grow grid grid-cols-2 gap-2">
+                       <input placeholder="Label (ex: Tajwid)" value={m.label} onChange={e => updateCustomMateri(i, 'label', e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold" />
+                       <input placeholder="Materi" value={m.value} onChange={e => updateCustomMateri(i, 'value', e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold" />
+                    </div>
+                    <select value={m.status} onChange={e => updateCustomMateri(i, 'status', e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold">
+                       <option value="Belum">Belum</option>
+                       <option value="Lancar">Lancar</option>
+                    </select>
+                    <button type="button" onClick={() => removeCustomMateri(i)} className="text-red-400 hover:text-red-600 px-2 py-2"><i className="fa-solid fa-trash-can text-sm"></i></button>
+                  </div>
+                ))}
               </div>
 
               <div className="space-y-1.5">
@@ -197,9 +240,13 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ students, progress, o
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1">
-                        {h.memorizationSurah && <span className="text-[9px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-lg font-bold border border-blue-100">S: {h.memorizationSurah}</span>}
-                        {h.memorizationDua && <span className="text-[9px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded-lg font-bold border border-purple-100">D: {h.memorizationDua}</span>}
-                        {h.memorizationHadith && <span className="text-[9px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-lg font-bold border border-amber-100">H: {h.memorizationHadith}</span>}
+                        {h.memorizationSurah && <MemorizationBadge label="S" value={h.memorizationSurah} status={h.memorizationSurahStatus} color="blue" />}
+                        {h.memorizationDua && <MemorizationBadge label="D" value={h.memorizationDua} status={h.memorizationDuaStatus} color="purple" />}
+                        {h.memorizationHadith && <MemorizationBadge label="H" value={h.memorizationHadith} status={h.memorizationHadithStatus} color="amber" />}
+                        {h.memorizationShalat && <MemorizationBadge label="P" value={h.memorizationShalat} status={h.memorizationShalatStatus} color="indigo" />}
+                        {h.customMemorization?.map((m, idx) => (
+                           <MemorizationBadge key={idx} label={m.label.substring(0,1).toUpperCase()} value={m.value} status={m.status} color="teal" />
+                        ))}
                       </div>
                     </td>
                   </tr>
@@ -223,6 +270,35 @@ const ProgressTracker: React.FC<ProgressTrackerProps> = ({ students, progress, o
         </div>
       )}
     </div>
+  );
+};
+
+const MemorizationInput = ({ label, value, status, onValueChange, onStatusChange }: { label: string, value: string, status?: MemorizationStatus, onValueChange: (v: string) => void, onStatusChange: (s: MemorizationStatus) => void }) => (
+  <div className="grid grid-cols-4 gap-2 items-end">
+    <div className="col-span-3 space-y-1">
+      <label className="text-[10px] font-extrabold text-slate-400 uppercase ml-1">{label}</label>
+      <input value={value} onChange={e => onValueChange(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700" placeholder="..." />
+    </div>
+    <select value={status} onChange={e => onStatusChange(e.target.value as MemorizationStatus)} className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold text-slate-700">
+      <option value="Belum">Belum</option>
+      <option value="Lancar">Lancar</option>
+    </select>
+  </div>
+);
+
+// Fix: Use React.FC to correctly handle reserved props like 'key' in mapped components
+const MemorizationBadge: React.FC<{ label: string; value: string; status?: MemorizationStatus; color: string }> = ({ label, value, status, color }) => {
+  const colors: any = {
+    blue: 'bg-blue-50 text-blue-600 border-blue-100',
+    purple: 'bg-purple-50 text-purple-600 border-purple-100',
+    amber: 'bg-amber-50 text-amber-600 border-amber-100',
+    indigo: 'bg-indigo-50 text-indigo-600 border-indigo-100',
+    teal: 'bg-teal-50 text-teal-600 border-teal-100',
+  };
+  return (
+    <span className={`text-[9px] px-2 py-0.5 rounded-lg font-bold border ${colors[color]} flex items-center gap-1`}>
+      {label}: {value} {status === 'Lancar' && <i className="fa-solid fa-check text-[8px] text-emerald-500"></i>}
+    </span>
   );
 };
 

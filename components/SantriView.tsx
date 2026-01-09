@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Student, AttendanceRecord, PaymentRecord, ProgressRecord, User } from '../types';
+import { Student, AttendanceRecord, PaymentRecord, ProgressRecord, User, MemorizationStatus } from '../types';
 import { MONTHS, SYAHRIAH_AMOUNT, TPQ_NAME, TPQ_LOCATION } from '../constants';
 
 interface SantriViewProps {
@@ -79,9 +79,9 @@ const SantriView: React.FC<SantriViewProps> = ({ user, students, attendance, pay
         />
         <HighlightCard 
           icon="fa-mosque" 
-          label="Hafalan Surat" 
+          label="Target Hafalan" 
           value={latestProgress?.memorizationSurah || 'N/A'} 
-          subtext="Target progres"
+          subtext={latestProgress?.memorizationSurahStatus === 'Lancar' ? 'Sudah Lancar' : 'Proses Menghafal'}
           color="purple"
         />
       </div>
@@ -114,11 +114,15 @@ const SantriView: React.FC<SantriViewProps> = ({ user, students, attendance, pay
                   <h4 className="font-black text-slate-800 text-base">{p.readingType} {p.readingLevel}</h4>
                   <p className="text-xs text-slate-500 font-bold mt-1">Halaman: <span className="text-emerald-600 font-black">{p.readingPage}</span></p>
                   
-                  {(p.memorizationSurah || p.memorizationDua || p.memorizationHadith) && (
+                  {(p.memorizationSurah || p.memorizationDua || p.memorizationHadith || p.memorizationShalat || p.customMemorization?.length! > 0) && (
                     <div className="mt-5 pt-5 border-t border-slate-200 flex flex-wrap gap-2">
-                       {p.memorizationSurah && <Tag label="Surat" value={p.memorizationSurah} icon="fa-book-quran" />}
-                       {p.memorizationDua && <Tag label="Doa" value={p.memorizationDua} icon="fa-hands-praying" />}
-                       {p.memorizationHadith && <Tag label="Hadist" value={p.memorizationHadith} icon="fa-mosque" />}
+                       {p.memorizationSurah && <Tag label="Surat" value={p.memorizationSurah} status={p.memorizationSurahStatus} icon="fa-book-quran" />}
+                       {p.memorizationDua && <Tag label="Doa" value={p.memorizationDua} status={p.memorizationDuaStatus} icon="fa-hands-praying" />}
+                       {p.memorizationHadith && <Tag label="Hadits" value={p.memorizationHadith} status={p.memorizationHadithStatus} icon="fa-mosque" />}
+                       {p.memorizationShalat && <Tag label="Shalat" value={p.memorizationShalat} status={p.memorizationShalatStatus} icon="fa-person-praying" />}
+                       {p.customMemorization?.map((m, i) => (
+                         <Tag key={i} label={m.label} value={m.value} status={m.status} icon="fa-bookmark" />
+                       ))}
                     </div>
                   )}
                   {p.notes && <div className="mt-4 bg-white/50 p-3 rounded-xl border border-dashed border-slate-200 text-xs text-slate-400 italic">"{p.notes}"</div>}
@@ -194,6 +198,19 @@ const SantriView: React.FC<SantriViewProps> = ({ user, students, attendance, pay
   );
 };
 
+// Fix: Use React.FC to correctly handle reserved props like 'key' in mapped components
+const Tag: React.FC<{ label: string; value: string; status?: MemorizationStatus; icon: string }> = ({ label, value, status, icon }) => (
+  <div className="bg-white border border-slate-200 px-3 py-2 rounded-xl flex items-center gap-3 shadow-sm">
+    <div className={`w-6 h-6 rounded-lg ${status === 'Lancar' ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-400'} flex items-center justify-center text-[10px]`}>
+      <i className={`fa-solid ${icon}`}></i>
+    </div>
+    <div className="leading-tight">
+      <p className="text-[8px] font-black text-slate-400 uppercase leading-none mb-0.5">{label} {status === 'Lancar' && '✅'}</p>
+      <p className="text-[10px] font-black text-slate-700 leading-none">{value}</p>
+    </div>
+  </div>
+);
+
 const HighlightCard = ({ icon, label, value, subtext, color }: { icon: string, label: string, value: string, subtext: string, color: string }) => {
   const themes: any = {
     emerald: 'bg-emerald-50 text-emerald-600',
@@ -213,17 +230,5 @@ const HighlightCard = ({ icon, label, value, subtext, color }: { icon: string, l
     </div>
   );
 };
-
-const Tag = ({ label, value, icon }: { label: string, value: string, icon: string }) => (
-  <div className="bg-white border border-slate-200 px-3 py-2 rounded-xl flex items-center gap-3 shadow-sm">
-    <div className="w-6 h-6 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-500 text-[10px]">
-      <i className={`fa-solid ${icon}`}></i>
-    </div>
-    <div className="leading-tight">
-      <p className="text-[8px] font-black text-slate-400 uppercase leading-none mb-0.5">{label}</p>
-      <p className="text-[10px] font-black text-slate-700 leading-none">{value}</p>
-    </div>
-  </div>
-);
 
 export default SantriView;

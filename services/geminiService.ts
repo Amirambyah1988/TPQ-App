@@ -8,7 +8,8 @@ export const generateTPQReport = async (
   attendance: AttendanceRecord[],
   payments: PaymentRecord[]
 ) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  // Always use direct process.env.API_KEY as per initialization rules.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();

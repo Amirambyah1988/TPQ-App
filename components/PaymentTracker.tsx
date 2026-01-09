@@ -1,28 +1,25 @@
 
 import React, { useState, useMemo } from 'react';
 import { Student, PaymentRecord } from '../types';
-import { MONTHS, SYAHRIAH_AMOUNT } from '../constants';
+import { MONTHS, SYAHRIAH_AMOUNT, TPQ_NAME } from '../constants';
 
 interface PaymentTrackerProps {
   students: Student[];
   payments: PaymentRecord[];
   onTogglePayment: (studentId: string, month: number, year: number, amount: number) => void;
+  onBulkPayment: (studentId: string, selectedMonths: number[], year: number, monthlyAmount: number) => void;
 }
 
-const PaymentTracker: React.FC<PaymentTrackerProps> = ({ students, payments, onTogglePayment }) => {
+const PaymentTracker: React.FC<PaymentTrackerProps> = ({ students, payments, onTogglePayment, onBulkPayment }) => {
   const currentYear = new Date().getFullYear();
   const [viewYear, setViewYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [searchQuery, setSearchQuery] = useState('');
-  
-  // State for dynamic nominal (default from constants)
   const [syahriahNominal, setSyahriahNominal] = useState(SYAHRIAH_AMOUNT);
   
-  // UI State for Modals
   const [historyStudent, setHistoryStudent] = useState<Student | null>(null);
-  const [paymentConfirm, setPaymentConfirm] = useState<{student: Student, month: number} | null>(null);
+  const [paymentConfirm, setPaymentConfirm] = useState<{student: Student, selectedMonths: number[]} | null>(null);
 
-  // Filter students based on search query
   const filteredStudents = useMemo(() => {
     return students.filter(s => 
       s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -30,14 +27,12 @@ const PaymentTracker: React.FC<PaymentTrackerProps> = ({ students, payments, onT
     );
   }, [students, searchQuery]);
 
-  // Calculate Recap Metrics for selected month and year using ACTUAL record amounts
   const recap = useMemo(() => {
     const monthlyPayments = payments.filter(p => p.month === selectedMonth && p.year === viewYear && p.status === 'Lunas');
     const totalCollected = monthlyPayments.reduce((sum, p) => sum + p.amount, 0);
     const paidCount = monthlyPayments.length;
     const unpaidCount = students.length - paidCount;
     const collectionRate = students.length > 0 ? Math.round((paidCount / students.length) * 100) : 0;
-
     return { totalCollected, paidCount, unpaidCount, collectionRate };
   }, [payments, students.length, selectedMonth, viewYear]);
 
@@ -45,257 +40,188 @@ const PaymentTracker: React.FC<PaymentTrackerProps> = ({ students, payments, onT
     return payments.find(p => p.studentId === studentId && p.month === month && p.year === viewYear);
   };
 
-  const getStudentHistory = (studentId: string) => {
-    return payments
-      .filter(p => p.studentId === studentId && p.year === viewYear)
-      .sort((a, b) => a.month - b.month);
+  const sendWhatsAppNotification = (student: Student, month: number, amount: number) => {
+    const message = `Assalamu'alaikum Warahmatullah Bpk/Ibu wali dari ${student.name}.%0A%0AAlhamdulillah, pembayaran Syahriah TPQ bulan *${MONTHS[month]} ${viewYear}* sebesar *Rp ${amount.toLocaleString('id-ID')}* telah kami terima.%0A%0A_Syukran Jazakumullah Khairan._%0A*Pengurus ${TPQ_NAME}*`;
+    window.open(`https://wa.me/?text=${message}`, '_blank');
   };
 
-  const exportToCSV = () => {
-    const headers = ['Nama Santri', 'Kelas', 'Bulan', 'Tahun', 'Nominal', 'Status', 'Tgl Bayar'];
-    const rows = payments
-      .filter(p => p.year === viewYear)
-      .map(p => {
-        const student = students.find(s => s.id === p.studentId);
-        return [
-          student?.name || 'Unknown',
-          student?.class || '-',
-          MONTHS[p.month],
-          p.year,
-          p.amount,
-          p.status,
-          p.paidDate ? new Date(p.paidDate).toLocaleString('id-ID') : '-'
-        ];
-      });
-    
-    const csvContent = [headers, ...rows].map(e => e.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `rekap_syahriah_${viewYear}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const openPaymentModal = (student: Student) => {
+    setPaymentConfirm({ student, selectedMonths: [selectedMonth] });
+  };
+
+  const toggleMonthInModal = (month: number) => {
+    if (!paymentConfirm) return;
+    const current = [...paymentConfirm.selectedMonths];
+    if (current.includes(month)) {
+      setPaymentConfirm({ ...paymentConfirm, selectedMonths: current.filter(m => m !== month) });
+    } else {
+      setPaymentConfirm({ ...paymentConfirm, selectedMonths: [...current, month].sort((a,b) => a-b) });
+    }
+  };
+
+  const selectNext3Months = () => {
+    if (!paymentConfirm) return;
+    const start = selectedMonth;
+    const months = [start, (start + 1) % 12, (start + 2) % 12].filter(m => !getPaymentStatus(paymentConfirm.student.id, m));
+    setPaymentConfirm({ ...paymentConfirm, selectedMonths: Array.from(new Set([...paymentConfirm.selectedMonths, ...months])).sort((a,b) => a-b) });
   };
 
   return (
     <div className="space-y-6">
-      {/* Header & Filters */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Syahriah Bulanan</h2>
-          <p className="text-slate-500 text-sm font-medium">Monitoring iuran dan pelunasan syahriah santri.</p>
+          <h2 className="text-xl font-black text-slate-800 tracking-tight">Syahriah Bulanan</h2>
+          <p className="text-slate-500 text-sm font-bold">Manajemen iuran operasional TPQ.</p>
         </div>
-        <div className="flex flex-wrap gap-2 w-full md:w-auto">
-          <button 
-            onClick={exportToCSV}
-            className="flex-1 md:flex-none bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-50 transition-all font-bold text-xs shadow-sm"
-          >
-            <i className="fa-solid fa-file-csv text-emerald-600"></i> Eksport {viewYear}
-          </button>
-          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
-            <i className="fa-solid fa-calendar text-emerald-500 text-xs"></i>
-            <select 
-              value={viewYear}
-              onChange={e => setViewYear(Number(e.target.value))}
-              className="bg-transparent outline-none text-xs font-bold text-slate-700"
-            >
-              {[currentYear - 1, currentYear, currentYear + 1].map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
+        <div className="flex flex-wrap gap-2">
+          <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm flex items-center gap-2">
+            <span className="text-[10px] font-black text-slate-400 uppercase">Tahun</span>
+            <select value={viewYear} onChange={e => setViewYear(Number(e.target.value))} className="text-xs font-black text-slate-700 outline-none bg-transparent">
+              {[currentYear - 1, currentYear, currentYear + 1].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
-          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
-            <i className="fa-solid fa-calendar-check text-emerald-500 text-xs"></i>
-            <select 
-              value={selectedMonth}
-              onChange={e => setSelectedMonth(Number(e.target.value))}
-              className="bg-transparent outline-none text-xs font-bold text-slate-700"
-            >
-              {MONTHS.map((m, i) => (
-                <option key={m} value={i}>{m}</option>
-              ))}
+          <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm flex items-center gap-2">
+            <span className="text-[10px] font-black text-slate-400 uppercase">Bulan</span>
+            <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="text-xs font-black text-slate-700 outline-none bg-transparent">
+              {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
             </select>
           </div>
         </div>
       </div>
 
-      {/* Recap Dashboard */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <RecapCard 
-          label="Total Terkumpul" 
-          value={`Rp ${recap.totalCollected.toLocaleString('id-ID')}`} 
-          icon="fa-money-bill-trend-up" 
-          color="emerald" 
-          subtext={`Bulan ${MONTHS[selectedMonth]}`}
-        />
-        <RecapCard 
-          label="Santri Lunas" 
-          value={recap.paidCount} 
-          icon="fa-user-check" 
-          color="blue" 
-          subtext="Sudah membayar"
-        />
-        <RecapCard 
-          label="Belum Bayar" 
-          value={recap.unpaidCount} 
-          icon="fa-user-clock" 
-          color="amber" 
-          subtext="Menunggu iuran"
-        />
-        <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
-          <div className="flex justify-between items-start">
-            <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Laju Pelunasan</p>
-            <span className="text-emerald-600 font-bold text-sm">{recap.collectionRate}%</span>
+        <RecapCard label="Terkumpul" value={`Rp ${recap.totalCollected.toLocaleString('id-ID')}`} icon="fa-money-bill-trend-up" color="emerald" subtext={MONTHS[selectedMonth]} />
+        <RecapCard label="Lunas" value={recap.paidCount} icon="fa-user-check" color="blue" subtext="Santri" />
+        <RecapCard label="Belum" value={recap.unpaidCount} icon="fa-user-clock" color="amber" subtext="Santri" />
+        <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col justify-center">
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Progress</p>
+            <p className="text-xs font-black text-emerald-600">{recap.collectionRate}%</p>
           </div>
-          <div className="mt-2 h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${recap.collectionRate}%` }}></div>
+          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${recap.collectionRate}%` }}></div>
           </div>
-          <p className="text-[10px] text-slate-400 font-bold mt-2 uppercase">Target {MONTHS[selectedMonth]}</p>
         </div>
       </div>
 
-      {/* Configuration & Search */}
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-50 flex flex-col md:flex-row gap-6 items-center justify-between">
+        <div className="p-6 border-b border-slate-50 flex flex-col md:flex-row gap-4 items-center justify-between bg-slate-50/50">
           <div className="relative w-full md:w-80">
-            <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm"></i>
-            <input 
-              type="text" 
-              placeholder="Cari nama santri..." 
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-11 pr-4 py-2.5 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
-            />
+            <i className="fa-solid fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input type="text" placeholder="Cari nama/kelas..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-5 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500 shadow-inner" />
           </div>
-          
-          <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
-            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Nominal Syahriah Aktif:</label>
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2 group focus-within:ring-2 focus-within:ring-emerald-500 transition-all">
-              <span className="text-xs font-bold text-slate-400">Rp</span>
-              <input 
-                type="number"
-                value={syahriahNominal}
-                onChange={e => setSyahriahNominal(Number(e.target.value))}
-                className="bg-transparent outline-none text-sm font-black text-emerald-600 w-24"
-              />
-            </div>
+          <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm">
+            <label className="text-[10px] font-black text-slate-400 uppercase">Tarif:</label>
+            <input type="number" value={syahriahNominal} onChange={e => setSyahriahNominal(Number(e.target.value))} className="w-24 bg-transparent text-sm font-black text-emerald-600 outline-none" />
           </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50/80">
+            <thead className="bg-white border-b border-slate-100">
               <tr>
-                <th className="px-8 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Santri</th>
-                <th className="px-8 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Kelas</th>
-                <th className="px-8 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest text-center">Status {MONTHS[selectedMonth]}</th>
-                <th className="px-8 py-4 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest text-right">Manajemen</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Santri</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filteredStudents.map(s => {
+              {filteredStudents.length > 0 ? filteredStudents.map(s => {
                 const record = getPaymentStatus(s.id, selectedMonth);
                 const isPaid = record?.status === 'Lunas';
                 return (
-                  <tr key={s.id} className="hover:bg-slate-50/50 group transition-colors">
+                  <tr key={s.id} className="hover:bg-slate-50/30 transition-colors">
                     <td className="px-8 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs border ${isPaid ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
-                          {s.name.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="font-bold text-slate-800 text-sm">{s.name}</p>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">NIS: {s.id}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-8 py-4">
-                      <span className="text-xs font-bold text-slate-500 uppercase">{s.class}</span>
+                      <p className="font-black text-slate-800 text-sm leading-none mb-1">{s.name}</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">{s.class}</p>
                     </td>
                     <td className="px-8 py-4 text-center">
-                      {isPaid ? (
-                        <div className="flex flex-col items-center">
-                          <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase border border-emerald-200">
-                            <i className="fa-solid fa-check-circle mr-1"></i> Lunas
-                          </span>
-                          <span className="text-[8px] text-slate-400 font-bold mt-1 uppercase">Bayar: {new Date(record.paidDate!).toLocaleDateString('id-ID')}</span>
-                        </div>
-                      ) : (
-                        <span className="bg-slate-100 text-slate-400 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase border border-slate-200">
-                          Belum Lunas
-                        </span>
-                      )}
+                      <span className={`px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter border ${isPaid ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
+                        {isPaid ? <><i className="fa-solid fa-check-circle mr-1"></i> Lunas</> : 'Belum Lunas'}
+                      </span>
                     </td>
                     <td className="px-8 py-4 text-right">
                       <div className="flex justify-end gap-2">
-                        <button 
-                          onClick={() => setHistoryStudent(s)}
-                          className="w-10 h-10 rounded-xl bg-white border border-slate-100 text-slate-400 hover:text-emerald-600 hover:border-emerald-100 transition-all flex items-center justify-center shadow-sm"
-                          title="Lihat Rekap Seluruh Bulan"
-                        >
-                          <i className="fa-solid fa-receipt text-xs"></i>
-                        </button>
-                        <button
-                          onClick={() => isPaid ? onTogglePayment(s.id, selectedMonth, viewYear, record.amount) : setPaymentConfirm({student: s, month: selectedMonth})}
-                          className={`
-                            min-w-[100px] py-2.5 rounded-xl text-[10px] font-extrabold uppercase tracking-widest transition-all border-2
-                            ${isPaid 
-                              ? 'bg-red-50 border-red-100 text-red-500 hover:bg-red-100 hover:border-red-200' 
-                              : 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-100 hover:bg-emerald-700 active:scale-95'
-                            }
-                          `}
-                        >
-                          {isPaid ? 'Batal Bayar' : 'Bayar'}
+                        {isPaid && (
+                          <button onClick={() => sendWhatsAppNotification(s, selectedMonth, record.amount)} className="w-9 h-9 rounded-xl bg-green-50 text-green-600 border border-green-100 hover:bg-green-500 hover:text-white flex items-center justify-center shadow-sm transition-all" title="Kirim Bukti WA"><i className="fa-brands fa-whatsapp text-xs"></i></button>
+                        )}
+                        <button onClick={() => setHistoryStudent(s)} className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-emerald-600 flex items-center justify-center shadow-sm" title="Riwayat"><i className="fa-solid fa-clock-rotate-left text-xs"></i></button>
+                        <button onClick={() => isPaid ? onTogglePayment(s.id, selectedMonth, viewYear, record.amount) : openPaymentModal(s)} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-sm ${isPaid ? 'bg-red-50 text-red-500 border border-red-100 hover:bg-red-500 hover:text-white' : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'}`}>
+                          {isPaid ? 'Batal' : 'Bayar'}
                         </button>
                       </div>
                     </td>
                   </tr>
                 );
-              })}
+              }) : (
+                <tr>
+                  <td colSpan={3} className="px-8 py-16 text-center text-slate-400 italic text-sm font-bold uppercase tracking-widest">Data tidak ditemukan.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Payment Confirmation Modal */}
+      {/* Modal Konfirmasi Pembayaran */}
       {paymentConfirm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-300 overflow-hidden">
-            <div className="bg-emerald-600 p-8 text-center text-white">
-              <div className="bg-white/20 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/30 backdrop-blur-md">
-                <i className="fa-solid fa-wallet text-2xl"></i>
-              </div>
-              <h3 className="text-xl font-extrabold">Bayar Syahriah</h3>
-              <p className="text-emerald-100 text-xs mt-1 uppercase tracking-widest font-bold">Periode: {MONTHS[paymentConfirm.month]} {viewYear}</p>
+          <div className="bg-white rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-in zoom-in duration-300">
+            <div className="bg-emerald-600 p-8 text-center text-white relative">
+              <button onClick={() => setPaymentConfirm(null)} className="absolute top-4 right-4 text-emerald-200 hover:text-white"><i className="fa-solid fa-times"></i></button>
+              <h3 className="text-xl font-black tracking-tight uppercase">Pelunasan Syahriah</h3>
+              <p className="text-emerald-100 text-[10px] mt-1 font-bold uppercase tracking-widest opacity-80">{paymentConfirm.student.name}</p>
             </div>
-            <div className="p-8 text-center">
-              <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-widest">Nominal Pembayaran</p>
-              <h4 className="text-3xl font-black text-emerald-600 mt-2">Rp {syahriahNominal.toLocaleString('id-ID')}</h4>
+            
+            <div className="p-8 space-y-6">
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pilih Bulan ({viewYear})</p>
+                  <button onClick={selectNext3Months} className="text-[9px] font-black text-emerald-600 uppercase bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 hover:bg-emerald-100 transition-all">+ 3 Bulan</button>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {MONTHS.map((m, i) => {
+                    const alreadyPaid = !!getPaymentStatus(paymentConfirm.student.id, i);
+                    const isSelected = paymentConfirm.selectedMonths.includes(i);
+                    return (
+                      <button 
+                        key={m} 
+                        disabled={alreadyPaid}
+                        onClick={() => toggleMonthInModal(i)}
+                        className={`py-3 rounded-2xl text-[9px] font-black uppercase border transition-all ${
+                          alreadyPaid ? 'bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed' :
+                          isSelected ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'
+                        }`}
+                      >
+                        {m.substring(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               
-              <div className="mt-8 bg-slate-50 p-5 rounded-2xl border border-slate-100 text-left">
-                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Data Santri</p>
-                <p className="text-sm font-bold text-slate-800 mt-1">{paymentConfirm.student.name}</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Kelas {paymentConfirm.student.class}</p>
+              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-3">
+                 <div className="flex justify-between items-center text-slate-500">
+                   <p className="text-[10px] font-black uppercase tracking-widest">Item</p>
+                   <p className="text-sm font-black text-slate-700">{paymentConfirm.selectedMonths.length} Bulan</p>
+                 </div>
+                 <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total</p>
+                   <p className="text-xl font-black text-emerald-600">Rp {(paymentConfirm.selectedMonths.length * syahriahNominal).toLocaleString('id-ID')}</p>
+                 </div>
               </div>
 
-              <div className="flex gap-3 mt-8">
+              <div className="flex gap-3">
+                <button onClick={() => setPaymentConfirm(null)} className="flex-1 py-4 font-black text-slate-400 text-sm">Batal</button>
                 <button 
-                  onClick={() => setPaymentConfirm(null)} 
-                  className="flex-1 py-4 font-extrabold text-slate-500 hover:bg-slate-50 rounded-2xl transition-all"
-                >
-                  Batal
-                </button>
-                <button 
+                  disabled={paymentConfirm.selectedMonths.length === 0}
                   onClick={() => {
-                    onTogglePayment(paymentConfirm.student.id, paymentConfirm.month, viewYear, syahriahNominal);
+                    onBulkPayment(paymentConfirm.student.id, paymentConfirm.selectedMonths, viewYear, syahriahNominal);
                     setPaymentConfirm(null);
-                  }} 
-                  className="flex-1 py-4 font-extrabold text-white bg-emerald-600 rounded-2xl shadow-xl shadow-emerald-100 transition-all active:scale-95"
+                  }}
+                  className="flex-1 py-4 font-black text-white bg-emerald-600 rounded-[1.25rem] shadow-xl hover:bg-emerald-700 active:scale-95 transition-all disabled:opacity-50"
                 >
-                  Proses Bayar
+                  Bayar Sekarang
                 </button>
               </div>
             </div>
@@ -303,60 +229,31 @@ const PaymentTracker: React.FC<PaymentTrackerProps> = ({ students, payments, onT
         </div>
       )}
 
-      {/* Student History Modal (Rekap per Anak) */}
+      {/* History Modal */}
       {historyStudent && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-300 overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in duration-300">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div>
-                <h3 className="text-xl font-extrabold text-slate-800">Rekap Pembayaran</h3>
-                <p className="text-xs text-emerald-600 font-bold uppercase mt-1">{historyStudent.name} • Tahun {viewYear}</p>
+                <h3 className="text-lg font-black text-slate-800 tracking-tight">Riwayat Bayar {viewYear}</h3>
+                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest leading-none mt-1">{historyStudent.name}</p>
               </div>
-              <button onClick={() => setHistoryStudent(null)} className="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors">
-                <i className="fa-solid fa-times"></i>
-              </button>
+              <button onClick={() => setHistoryStudent(null)} className="w-10 h-10 rounded-full bg-white text-slate-400 border border-slate-200 shadow-sm flex items-center justify-center hover:text-slate-600"><i className="fa-solid fa-times"></i></button>
             </div>
-            
-            <div className="p-8 overflow-y-auto flex-grow space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {MONTHS.map((m, i) => {
-                  const record = getPaymentStatus(historyStudent.id, i);
-                  const isPaid = record?.status === 'Lunas';
-                  return (
-                    <div key={m} className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${isPaid ? 'bg-emerald-50 border-emerald-100 shadow-sm' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                      <div>
-                        <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">{m}</p>
-                        <p className={`text-sm font-extrabold ${isPaid ? 'text-emerald-700' : 'text-slate-400'}`}>
-                          {isPaid ? `Rp ${record.amount.toLocaleString('id-ID')}` : 'Belum Bayar'}
-                        </p>
-                        {isPaid && (
-                          <p className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">
-                            Bayar: {new Date(record.paidDate!).toLocaleDateString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}
-                          </p>
-                        )}
-                      </div>
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isPaid ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
-                        <i className={`fa-solid ${isPaid ? 'fa-check' : 'fa-clock'} text-[10px]`}></i>
-                      </div>
+            <div className="p-8 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {MONTHS.map((m, i) => {
+                const record = getPaymentStatus(historyStudent.id, i);
+                const isPaid = record?.status === 'Lunas';
+                return (
+                  <div key={m} className={`p-5 rounded-3xl border transition-all ${isPaid ? 'bg-emerald-50 border-emerald-100 shadow-sm' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{m}</p>
+                    <div className="flex justify-between items-center">
+                      <p className={`text-sm font-black ${isPaid ? 'text-emerald-700' : 'text-slate-400'}`}>{isPaid ? 'Lunas' : 'Belum'}</p>
+                      {isPaid && <button onClick={() => sendWhatsAppNotification(historyStudent, i, record.amount)} className="text-emerald-500 hover:text-emerald-700"><i className="fa-brands fa-whatsapp text-lg"></i></button>}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-            
-            <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-              <div>
-                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Akumulasi Terbayar ({viewYear})</p>
-                <p className="text-xl font-black text-emerald-600">
-                  Rp {getStudentHistory(historyStudent.id).filter(p => p.status === 'Lunas').reduce((sum, p) => sum + p.amount, 0).toLocaleString('id-ID')}
-                </p>
-              </div>
-              <button 
-                onClick={() => setHistoryStudent(null)}
-                className="bg-white border border-slate-200 px-6 py-2.5 rounded-xl font-extrabold text-sm text-slate-600 hover:bg-slate-100 transition-all shadow-sm"
-              >
-                Tutup
-              </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -365,22 +262,22 @@ const PaymentTracker: React.FC<PaymentTrackerProps> = ({ students, payments, onT
   );
 };
 
-const RecapCard = ({ label, value, icon, color, subtext }: { label: string, value: string | number, icon: string, color: string, subtext: string }) => {
-  const colorClasses: any = {
-    emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100',
-    blue: 'bg-blue-50 text-blue-600 border-blue-100',
-    amber: 'bg-amber-50 text-amber-700 border-amber-200',
+const RecapCard = ({ label, value, icon, color, subtext }: any) => {
+  const colorMap: any = {
+    emerald: 'bg-emerald-500 text-white',
+    blue: 'bg-blue-500 text-white',
+    amber: 'bg-amber-500 text-white',
   };
   return (
-    <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm transition-transform hover:-translate-y-1">
-      <div className="flex justify-between items-start mb-3">
-        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${colorClasses[color]}`}>
-          <i className={`fa-solid ${icon} text-sm`}></i>
-        </div>
-        <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mt-1">{label}</p>
+    <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-5 transition-all hover:shadow-md">
+      <div className={`w-14 h-14 rounded-[1.25rem] flex items-center justify-center text-xl ${colorMap[color]} shadow-lg`}>
+        <i className={`fa-solid ${icon}`}></i>
       </div>
-      <h4 className="text-xl font-extrabold text-slate-800 tracking-tight">{value}</h4>
-      <p className="text-[9px] font-bold text-slate-400 uppercase mt-1.5 tracking-wider">{subtext}</p>
+      <div>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">{label}</p>
+        <p className="text-xl font-black text-slate-800 leading-none">{value}</p>
+        <p className="text-[9px] font-bold text-slate-400 uppercase mt-2 italic opacity-60">{subtext}</p>
+      </div>
     </div>
   );
 };
