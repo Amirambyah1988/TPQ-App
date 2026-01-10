@@ -12,6 +12,11 @@
     body {
       font-family: 'Plus Jakarta Sans', sans-serif;
       background-color: #f8fafc;
+      margin: 0;
+      padding: 0;
+    }
+    #root {
+      min-height: 100vh;
     }
   </style>
 <script type="importmap">
@@ -28,5 +33,7 @@
 </head>
 <body>
   <div id="root"></div>
+  <!-- Tag di bawah ini sangat krusial agar aplikasi muncul -->
+  <script type="module" src="./index.tsx"></script>
 </body>
 </html>
